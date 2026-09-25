@@ -53,22 +53,44 @@ export const createBooking = async (req, res)=>{
 
         await showData.save();
 
-         // Stripe Gateway Initialize
-         const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY)
+        // Check if Stripe is configured or if Mock/Demo Payment should be used
+        const stripeKey = process.env.STRIPE_SECRET_KEY;
+        const isStripeConfigured = stripeKey && !stripeKey.startsWith('---') && !stripeKey.includes('Enter your');
 
-         // Creating line items to for Stripe
-         const line_items = [{
+        if (!isStripeConfigured) {
+            // Demo/Mock instant payment mode
+            booking.isPaid = true;
+            await booking.save();
+
+            try {
+                // Send confirmation email / Inngest event if available
+                await inngest.send({
+                    name: "app/show.booked",
+                    data: { bookingId: booking._id.toString() }
+                });
+            } catch (err) {
+                // Inngest not configured in local dev, ignore
+            }
+
+            return res.json({ success: true, url: `${origin}/my-bookings` });
+        }
+
+        // Real Stripe Gateway Initialize
+        const stripeInstance = new stripe(stripeKey)
+
+        // Creating line items for Stripe
+        const line_items = [{
             price_data: {
                 currency: 'usd',
-                product_data:{
+                product_data: {
                     name: showData.movie.title
                 },
                 unit_amount: Math.floor(booking.amount) * 100
             },
             quantity: 1
-         }]
+        }]
 
-         const session = await stripeInstance.checkout.sessions.create({
+        const session = await stripeInstance.checkout.sessions.create({
             success_url: `${origin}/loading/my-bookings`,
             cancel_url: `${origin}/my-bookings`,
             line_items: line_items,
@@ -77,24 +99,28 @@ export const createBooking = async (req, res)=>{
                 bookingId: booking._id.toString()
             },
             expires_at: Math.floor(Date.now() / 1000) + 30 * 60, // Expires in 30 minutes
-         })
+        })
 
-         booking.paymentLink = session.url
-         await booking.save()
+        booking.paymentLink = session.url
+        await booking.save()
 
-         // Run Inngest Sheduler Function to check payment status after 10 minutes
-         await inngest.send({
-            name: "app/checkpayment",
-            data: {
-                bookingId: booking._id.toString()
-            }
-         })
+        try {
+            // Run Inngest Scheduler Function to check payment status after 10 minutes
+            await inngest.send({
+                name: "app/checkpayment",
+                data: {
+                    bookingId: booking._id.toString()
+                }
+            })
+        } catch (err) {
+            // Ignore Inngest error in dev
+        }
 
-         res.json({success: true, url: session.url})
+        res.json({ success: true, url: session.url })
 
     } catch (error) {
         console.log(error.message);
-        res.json({success: false, message: error.message})
+        res.json({ success: false, message: error.message })
     }
 }
 

@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { assets, dummyDateTimeData, dummyShowsData } from '../assets/assets'
 import Loading from '../components/Loading'
-import { ArrowRightIcon, ClockIcon } from 'lucide-react'
+import { ArrowRightIcon, ClockIcon, SparklesIcon } from 'lucide-react'
 import isoTimeFormat from '../lib/isoTimeFormat'
 import BlurCircle from '../components/BlurCircle'
 import toast from 'react-hot-toast'
@@ -12,11 +12,13 @@ const SeatLayout = () => {
 
   const groupRows = [["A", "B"], ["C", "D"], ["E", "F"], ["G", "H"], ["I", "J"]]
 
-  const {id, date } = useParams()
-  const [selectedSeats, setSelectedSeats] = useState([])
+  const { id, date } = useParams()
+  const location = useLocation()
+  const [selectedSeats, setSelectedSeats] = useState(location.state?.seats || [])
   const [selectedTime, setSelectedTime] = useState(null)
   const [show, setShow] = useState(null)
   const [occupiedSeats, setOccupiedSeats] = useState([])
+  const isFromAgent = location.state?.fromAgent
 
   const navigate = useNavigate()
 
@@ -27,6 +29,17 @@ const SeatLayout = () => {
       const { data } = await axios.get(`/api/show/${id}`)
       if (data.success){
         setShow(data)
+
+        // If navigated from AI agent with a specific showId or timing, auto-select it!
+        if (data.dateTime && data.dateTime[date]) {
+          const matchingTiming = location.state?.showId
+            ? data.dateTime[date].find(item => item.showId === location.state.showId)
+            : data.dateTime[date][0];
+
+          if (matchingTiming) {
+            setSelectedTime(matchingTiming)
+          }
+        }
       }
     } catch (error) {
       console.log(error)
@@ -68,6 +81,7 @@ const SeatLayout = () => {
       const { data } = await axios.get(`/api/booking/seats/${selectedTime.showId}`)
       if (data.success) {
         setOccupiedSeats(data.occupiedSeats)
+        setSelectedSeats(prev => prev.filter(seat => !data.occupiedSeats.includes(seat)))
       }else{
         toast.error(data.message)
       }
@@ -124,6 +138,16 @@ const SeatLayout = () => {
       <div className='relative flex-1 flex flex-col items-center max-md:mt-16'>
           <BlurCircle top="-100px" left="-100px"/>
           <BlurCircle bottom="0" right="0"/>
+          
+          {isFromAgent && selectedSeats.length > 0 && (
+            <div className='mb-6 px-4 py-2.5 bg-primary/15 border border-primary/30 rounded-xl flex items-center gap-2 text-sm text-white shadow-lg animate-fade-in'>
+              <SparklesIcon className='w-4 h-4 text-primary flex-shrink-0 animate-spin-slow' />
+              <span>
+                <strong>QuickShow AI</strong> pre-selected prime seats: <strong className='text-primary'>{selectedSeats.join(', ')}</strong>. Tap any seat to adjust or proceed to checkout!
+              </span>
+            </div>
+          )}
+
           <h1 className='text-2xl font-semibold mb-4'>Select your seat</h1>
           <img src={assets.screenImage} alt="screen" />
           <p className='text-gray-400 text-sm mb-6'>SCREEN SIDE</p>

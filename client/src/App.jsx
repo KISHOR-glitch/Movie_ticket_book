@@ -17,6 +17,7 @@ import ListBookings from './pages/admin/ListBookings'
 import { useAppContext } from './context/AppContext'
 import { SignIn } from '@clerk/clerk-react'
 import Loading from './components/Loading'
+import AgentChat from './pages/AgentChat'
 
 const App = () => {
 
@@ -37,6 +38,7 @@ const App = () => {
         <Route path='/loading/:nextUrl' element={<Loading/>} />
 
         <Route path='/favorite' element={<Favorite/>} />
+        <Route path='/agent' element={<AgentChat/>} />
         <Route path='/admin/*' element={user ? <Layout/> : (
           <div className='min-h-screen flex justify-center items-center'>
             <SignIn fallbackRedirectUrl={'/admin'} />
